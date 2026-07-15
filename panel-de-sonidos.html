@@ -1,0 +1,2385 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Panel de Sonidos</title>
+<style>
+  /* ===== Reset mínimo, sin librerías, pensado para hardware muy limitado ===== */
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg: #121212;
+    --panel: #1a1a1a;
+    --panel-raised: #202020;
+    --line: #2c2c2c;
+    --text: #e8e4dc;
+    --text-dim: #8a8a86;
+    --accent: #e8a33d;
+    --accent-dim: #7a5a26;
+    --danger: #c1553f;
+    --ok: #5c8a5c;
+    --radius: 10px;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* system-ui: cero descargas de fuentes, clave para gama baja */
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  button {
+    font-family: inherit;
+    color: inherit;
+    border: none;
+    background: none;
+    cursor: pointer;
+  }
+
+  /* ===== Barra superior ===== */
+  #topbar {
+    flex-shrink: 0;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #topbar-row1 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #app-title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  #search-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+  #search {
+    width: 100%;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 7px 30px 7px 10px;
+    font-size: 14px;
+  }
+  #search::placeholder { color: var(--text-dim); }
+  /* Botón "x" para limpiar el buscador rápido: antes había que borrar
+     el texto a mano, letra por letra. */
+  #search-clear-btn {
+    display: none;
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    font-size: 15px;
+    border-radius: 50%;
+  }
+  #search-clear-btn.show { display: flex; }
+
+  .btn-add {
+    flex-shrink: 0;
+    background: var(--accent);
+    color: #1a1200;
+    font-weight: 700;
+    font-size: 20px;
+    line-height: 1;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .btn-add:active { background: #c78a2e; }
+
+  /* Fila de controles: categorías + orden */
+  #topbar-row2 {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #topbar-row2::-webkit-scrollbar { display: none; }
+
+  /* Fila de tags (hashtags): solo aparece cuando hay tags creados */
+  #topbar-row3 {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #topbar-row3::-webkit-scrollbar { display: none; }
+  #topbar-row3:empty { display: none; }
+
+  .chip {
+    flex-shrink: 0;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    font-size: 12.5px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .chip.active {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: var(--accent-dim);
+    font-weight: 600;
+  }
+  .chip.chip-manage {
+    color: var(--text-dim);
+    font-size: 15px;
+    padding: 5px 9px;
+  }
+
+  /* Chip de tag activo (buscador por hashtag): mismo lenguaje visual que
+     las categorías pero con un tono distinto para diferenciarlos de un vistazo */
+  .chip.chip-tag.active {
+    background: #2c4a4a;
+    color: #6fc7c7;
+    border-color: #2c4a4a;
+  }
+
+  #sort-select {
+    flex-shrink: 0;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    font-size: 12px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    margin-left: auto;
+  }
+
+  /* ===== Grid principal de botones ===== */
+  #board-wrap {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px;
+  }
+
+  #board {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+    gap: 6px;
+  }
+
+  .sound-btn {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 5px;
+    overflow: hidden;
+  }
+
+  /* Estado "playing": cambio instantáneo de color, sin transiciones costosas */
+  .sound-btn.playing {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+  }
+
+  .sound-btn .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: none;
+  }
+  .sound-btn.playing .dot { display: block; }
+
+  .sound-btn .label {
+    font-size: 12px;
+    line-height: 1.15;
+    font-weight: 600;
+    text-align: center;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+    hyphens: auto;
+    max-height: 3.5em;
+  }
+
+  /* Botón con imagen: la imagen ya viene pre-recortada a cuadrado (ver
+     recorte en el modal), pero object-fit + el overflow:hidden del padre
+     .sound-btn son la doble garantía de que nunca sobresalga del botón */
+  .sound-btn .btn-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: var(--radius);
+  }
+  .sound-btn.has-img .label { display: none; }
+  .sound-btn.has-img .cat-tag {
+    position: relative;
+    z-index: 1;
+    background: rgba(0,0,0,0.55);
+    padding: 1px 5px;
+    border-radius: 5px;
+    margin-top: 0;
+    position: absolute;
+    bottom: 4px;
+    left: 4px;
+    right: 4px;
+    text-align: center;
+  }
+
+  .sound-btn .cat-tag {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .sound-btn:active { background: var(--panel-raised); }
+  .sound-btn.playing:active { background: var(--accent-dim); }
+
+  .sound-btn .del-x {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background: var(--danger);
+    color: #fff;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+  }
+  #board.edit-mode .del-x { display: flex; }
+  #board.edit-mode .sound-btn { animation: none; } /* nunca animar en modo edición: gama baja */
+
+  /* Barra de "modo edición activo": antes la única forma de salir era
+     tocar el título sin ninguna pista visual; ahora queda explícito. */
+  #edit-mode-bar {
+    display: none;
+    position: fixed;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent);
+    color: #1a1200;
+    padding: 9px 10px 9px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    align-items: center;
+    gap: 10px;
+    z-index: 15;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  }
+  #edit-mode-bar.show { display: flex; }
+  #edit-mode-bar button {
+    background: rgba(0,0,0,0.15);
+    color: #1a1200;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 12.5px;
+  }
+
+  .empty-msg {
+    grid-column: 1 / -1;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 14px;
+    padding: 40px 20px;
+    line-height: 1.5;
+  }
+
+  /* ===== Modal (crear/editar sonido) ===== */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 10;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    border-radius: 16px 16px 0 0;
+    width: 100%;
+    max-width: 480px;
+    max-height: 88vh;
+    overflow-y: auto;
+    padding: 16px 16px 20px;
+  }
+
+  .modal h2 {
+    font-size: 16px;
+    margin-bottom: 14px;
+    color: var(--accent);
+  }
+
+  .field { margin-bottom: 12px; }
+  .field label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .field input[type="text"],
+  .field select {
+    width: 100%;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 9px 10px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .char-count {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: right;
+    margin-top: 2px;
+  }
+
+  .file-drop {
+    border: 1.5px dashed var(--line);
+    border-radius: 8px;
+    padding: 14px 10px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .file-drop.has-file {
+    border-color: var(--ok);
+    color: var(--ok);
+  }
+  .field input[type="file"] { display: none; }
+
+  .new-cat-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .new-cat-row input {
+    flex: 1;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 7px 9px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .new-cat-row button {
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--accent);
+    padding: 0 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* ===== Tags (hashtags) dentro del modal de sonido ===== */
+  .tags-input-row {
+    display: flex;
+    gap: 6px;
+  }
+  .tags-input-row input {
+    flex: 1;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 7px 9px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  .tags-input-row button {
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--accent);
+    padding: 0 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .tag-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 7px;
+  }
+  .tag-suggestion {
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    font-size: 11.5px;
+    padding: 4px 9px;
+    border-radius: 999px;
+  }
+  .tag-suggestion::before { content: "#"; opacity: 0.6; }
+  .tag-suggestion.added {
+    opacity: 0.4;
+  }
+
+  .tags-current {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+    min-height: 24px;
+  }
+  .tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #2c4a4a;
+    color: #6fc7c7;
+    font-size: 12px;
+    padding: 4px 6px 4px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .tag-pill::before { content: "#"; opacity: 0.7; }
+  .tag-pill .tag-x {
+    width: 15px;
+    height: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.25);
+    border-radius: 50%;
+    font-size: 10px;
+    line-height: 1;
+  }
+  .tags-empty-hint {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    padding: 3px 0;
+  }
+
+  /* ===== Selector de tipo de botón: texto vs imagen ===== */
+  .type-toggle {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .type-toggle button {
+    flex: 1;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    padding: 8px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .type-toggle button.active {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: var(--accent-dim);
+  }
+
+  /* ===== Recorte de imagen (encaja la imagen en un cuadrado antes de guardar,
+     así garantizamos que nunca sobresalga del botón en el tablero) ===== */
+  .crop-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-width: 260px;
+    margin: 0 auto;
+    background: #000;
+    border-radius: 10px;
+    overflow: hidden;
+    touch-action: none;
+  }
+  .crop-wrap img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    max-width: none;
+    max-height: none;
+    user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
+  }
+  .crop-hint {
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    margin-top: 6px;
+  }
+  .crop-zoom-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .crop-zoom-row span { font-size: 14px; color: var(--text-dim); }
+  .crop-zoom-row input[type="range"] {
+    flex: 1;
+    accent-color: var(--accent);
+  }
+  .img-preview-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .img-preview-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+  }
+  .img-preview-row button {
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text-dim);
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12.5px;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .modal-actions button {
+    flex: 1;
+    padding: 11px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .btn-cancel {
+    background: var(--panel-raised);
+    color: var(--text-dim);
+    border: 1px solid var(--line);
+  }
+  .btn-save {
+    background: var(--accent);
+    color: #1a1200;
+  }
+  .btn-save:disabled {
+    background: var(--line);
+    color: var(--text-dim);
+  }
+  .btn-delete-full {
+    background: var(--danger);
+    color: #fff;
+  }
+
+  .manage-cat-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+    font-size: 14px;
+  }
+  /* El nombre es un input editable en línea: antes solo se podía borrar
+     la categoría entera para "corregir" un nombre mal escrito. */
+  .manage-cat-item input.cat-name-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    padding: 5px 7px;
+    border-radius: 6px;
+  }
+  .manage-cat-item input.cat-name-input:focus {
+    background: var(--panel-raised);
+    border-color: var(--accent-dim);
+    outline: none;
+  }
+  .manage-cat-item .cat-count {
+    font-size: 11px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .manage-cat-item button {
+    color: var(--danger);
+    font-size: 12px;
+    padding: 4px 8px;
+    flex-shrink: 0;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 9px 16px;
+    border-radius: 999px;
+    font-size: 13px;
+    z-index: 20;
+    display: none;
+  }
+  .toast.show { display: block; }
+
+  /* ===== Apartado "Editar sonidos": lista completa de sonidos subidos,
+     independiente del tablero, pensada para entrar a modificar cada uno ===== */
+  .manage-sounds-search {
+    width: 100%;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+
+  /* Exportar/importar backup: sin esto, toda la colección vive solo en
+     IndexedDB del navegador y se pierde entera si se borra el caché. */
+  .backup-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .backup-row button,
+  .backup-row .backup-import-label {
+    flex: 1;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    color: var(--accent);
+    padding: 9px 8px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #manage-sounds-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 58vh;
+    overflow-y: auto;
+  }
+  .manage-sound-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 9px;
+  }
+  .manage-sound-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 7px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    object-fit: cover;
+    overflow: hidden;
+  }
+  .manage-sound-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .manage-sound-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .manage-sound-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .manage-sound-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 3px;
+  }
+  .manage-sound-meta span {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 999px;
+  }
+  .manage-sound-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .manage-sound-actions button {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .msa-play { background: var(--panel); border: 1px solid var(--line); color: var(--accent); }
+  .msa-edit { background: var(--panel); border: 1px solid var(--line); color: var(--text-dim); }
+  .msa-del { background: var(--panel); border: 1px solid var(--line); color: var(--danger); }
+
+  /* Antes .playing no tenía ningún estilo aquí (solo existía para .sound-btn
+     del tablero), así que tocar "▶" en esta lista no daba ninguna señal de
+     qué sonido estaba sonando ni cómo pararlo. */
+  .manage-sound-row.playing {
+    border-color: var(--accent-dim);
+    background: #2a2418;
+  }
+  .manage-sound-row.playing .msa-play {
+    background: var(--accent);
+    color: #1a1200;
+    border-color: var(--accent);
+  }
+
+  /* Pantallas muy angostas: aún más compacto */
+  @media (max-width: 340px) {
+    #board { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); }
+    .sound-btn .label { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+  <div id="topbar">
+    <div id="topbar-row1">
+      <span id="app-title">🔊 Panel</span>
+      <div id="search-wrap">
+        <input type="text" id="search" placeholder="Buscar sonido…">
+        <button id="search-clear-btn" type="button" aria-label="Limpiar búsqueda">✕</button>
+      </div>
+      <button class="btn-add" id="open-add-modal" aria-label="Añadir sonido">+</button>
+    </div>
+    <div id="topbar-row2">
+      <button class="chip chip-manage" id="manage-cats-btn" title="Gestionar categorías">⚙</button>
+      <button class="chip chip-manage" id="manage-sounds-btn" title="Editar sonidos">✎</button>
+      <button class="chip active" data-cat="__all__">Todos</button>
+      <select id="sort-select">
+        <option value="recent">Recientes primero</option>
+        <option value="old">Antiguos primero</option>
+        <option value="az">Nombre A–Z</option>
+        <option value="za">Nombre Z–A</option>
+      </select>
+    </div>
+    <div id="topbar-row3"></div>
+  </div>
+
+  <div id="board-wrap">
+    <div id="board"></div>
+  </div>
+
+  <!-- Modal: crear / editar sonido -->
+  <div class="modal-overlay" id="sound-modal-overlay">
+    <div class="modal">
+      <h2 id="sound-modal-title">Nuevo sonido</h2>
+
+      <div class="field">
+        <label for="sound-name">Nombre del botón</label>
+        <input type="text" id="sound-name" maxlength="60" placeholder="Ej: Ay Dios mío qué fue eso">
+        <div class="char-count"><span id="name-char-count">0</span>/60</div>
+      </div>
+
+      <div class="field">
+        <label for="sound-cat">Categoría</label>
+        <select id="sound-cat"></select>
+        <div class="new-cat-row">
+          <input type="text" id="new-cat-input" maxlength="24" placeholder="Nueva categoría…">
+          <button id="new-cat-add-btn" type="button">Añadir</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Archivo de audio</label>
+        <label class="file-drop" id="file-drop-label" for="sound-file">Toca para elegir un audio</label>
+        <input type="file" id="sound-file" accept="audio/*">
+        <audio id="audio-preview" controls style="display:none; width:100%; margin-top:8px; height:32px;"></audio>
+      </div>
+
+      <div class="field">
+        <label>Tags (hashtags)</label>
+        <div class="tags-input-row">
+          <input type="text" id="tag-input" maxlength="20" placeholder="Ej: payaso">
+          <button id="tag-add-btn" type="button">Añadir</button>
+        </div>
+        <div class="tags-current" id="tags-current"></div>
+        <div class="tag-suggestions" id="tag-suggestions"></div>
+      </div>
+
+      <div class="field">
+        <label>Apariencia del botón</label>
+        <div class="type-toggle">
+          <button type="button" class="active" data-appearance="text" id="appearance-text-btn">Texto</button>
+          <button type="button" data-appearance="image" id="appearance-image-btn">Imagen</button>
+        </div>
+
+        <!-- Solo visible cuando "Imagen" está seleccionado -->
+        <div id="image-appearance-block" style="display:none;">
+          <label class="file-drop" id="btn-img-drop-label" for="btn-img-file">Toca para elegir una imagen</label>
+          <input type="file" id="btn-img-file" accept="image/*">
+
+          <div id="crop-block" style="display:none;">
+            <div class="crop-wrap" id="crop-wrap">
+              <img id="crop-img" src="" alt="">
+            </div>
+            <div class="crop-hint">Arrastra para mover, ajusta el zoom para encuadrar</div>
+            <div class="crop-zoom-row">
+              <span>🔍</span>
+              <input type="range" id="crop-zoom" min="100" max="300" value="100">
+            </div>
+          </div>
+
+          <div class="img-preview-row" id="img-preview-row" style="display:none;">
+            <img class="img-preview-thumb" id="img-preview-thumb" src="" alt="">
+            <button type="button" id="img-change-btn">Cambiar imagen</button>
+            <button type="button" id="img-remove-btn">Quitar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" id="cancel-sound-modal">Cancelar</button>
+        <button class="btn-save" id="save-sound-btn" disabled>Guardar</button>
+      </div>
+      <div class="modal-actions" id="delete-row" style="display:none;">
+        <button class="btn-delete-full" id="delete-sound-btn">Borrar este sonido</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Apartado: editar sonidos (lista completa de sonidos subidos) -->
+  <div class="modal-overlay" id="manage-sounds-overlay">
+    <div class="modal">
+      <h2>Editar sonidos</h2>
+      <div class="backup-row">
+        <button type="button" id="export-backup-btn">⬇ Exportar todo (backup)</button>
+        <label class="backup-import-label" for="import-backup-file">⬆ Importar backup</label>
+        <input type="file" id="import-backup-file" accept="application/json,.json" style="display:none;">
+      </div>
+      <input type="text" class="manage-sounds-search" id="manage-sounds-search" placeholder="Buscar en tus sonidos…">
+      <div id="manage-sounds-list"></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="close-manage-sounds">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: gestionar categorías -->
+  <div class="modal-overlay" id="cats-modal-overlay">
+    <div class="modal">
+      <h2>Categorías</h2>
+      <div id="cats-list"></div>
+      <div class="new-cat-row" style="margin-top:12px;">
+        <input type="text" id="cats-modal-new-input" maxlength="24" placeholder="Nueva categoría…">
+        <button id="cats-modal-new-btn" type="button">Añadir</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="close-cats-modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div id="edit-mode-bar">
+    <span>✎ Modo edición: toca un botón para editarlo, o ✕ para borrarlo</span>
+    <button id="edit-mode-done-btn" type="button">Listo</button>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* =========================================================
+     CAPA DE DATOS — IndexedDB
+     Los blobs de audio no caben bien en localStorage (límite ~5MB
+     y todo en string), así que usamos IndexedDB, que maneja
+     Blobs de forma nativa y eficiente incluso en gama baja.
+     ========================================================= */
+  const DB_NAME = "soundboard-db";
+  const DB_VERSION = 1;
+  const STORE_SOUNDS = "sounds";
+  const STORE_CATS = "categories";
+  let db = null;
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = (e) => {
+        const _db = e.target.result;
+        if (!_db.objectStoreNames.contains(STORE_SOUNDS)) {
+          _db.createObjectStore(STORE_SOUNDS, { keyPath: "id" });
+        }
+        if (!_db.objectStoreNames.contains(STORE_CATS)) {
+          _db.createObjectStore(STORE_CATS, { keyPath: "id" });
+        }
+      };
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  function tx(storeName, mode) {
+    return db.transaction(storeName, mode).objectStore(storeName);
+  }
+
+  function idbGetAll(storeName) {
+    return new Promise((resolve, reject) => {
+      const req = tx(storeName, "readonly").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function idbPut(storeName, obj) {
+    return new Promise((resolve, reject) => {
+      const req = tx(storeName, "readwrite").put(obj);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function idbDelete(storeName, id) {
+    return new Promise((resolve, reject) => {
+      const req = tx(storeName, "readwrite").delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  /* =========================================================
+     ESTADO EN MEMORIA
+     ========================================================= */
+  // sound: { id, name, catId, audioBlob, createdAt, tags: [string],
+  //          appearance: "text" | "image", imageBlob: Blob|null }
+  // Los tags viven dentro de cada sonido (no en su propio store): la lista
+  // de "todos los tags" se deriva sobre la marcha, así evitamos otra tabla
+  // y otro punto de desincronización en un proyecto pensado para ser simple.
+  let sounds = [];
+  let categories = [];   // { id, name }
+  let activeCatId = "__all__";
+  let activeTag = null;  // null = sin filtro de tag activo
+  let sortMode = "recent";
+  let searchTerm = "";
+  let editMode = false;
+  let editingSoundId = null; // si no es null, el modal de sonido está editando en vez de creando
+  let returnToManageSounds = false; // true si el modal de edición se abrió desde el apartado "Editar sonidos"
+  let pickedFile = null;
+
+  // Estado del modal de sonido para tags e imagen del botón
+  let draftTags = [];           // tags del sonido que se está creando/editando, antes de guardar
+  let appearanceMode = "text";  // "text" | "image" — exclusivos entre sí
+  let pickedImageBlob = null;   // imagen YA recortada a cuadrado, lista para guardar
+  let cropSourceImg = null;     // <img> temporal con la imagen original sin recortar
+  let cropState = null;         // { natW, natH, scale, minScale, offX, offY } — geometría del recorte
+
+  // Guardamos URLs de objeto creadas para no filtrar memoria (clave en gama baja)
+  const objectUrlCache = new Map(); // soundId -> url
+  const imageUrlCache = new Map();  // soundId -> url (imagen del botón)
+  let currentAudio = null;
+  let currentPlayingBtn = null;
+
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  /* =========================================================
+     REFERENCIAS DOM
+     ========================================================= */
+  const boardEl = document.getElementById("board");
+  const editModeBar = document.getElementById("edit-mode-bar");
+  const topbarRow2 = document.getElementById("topbar-row2");
+  const topbarRow3 = document.getElementById("topbar-row3");
+  const sortSelect = document.getElementById("sort-select");
+  const searchInput = document.getElementById("search");
+  const toastEl = document.getElementById("toast");
+
+  const soundModalOverlay = document.getElementById("sound-modal-overlay");
+  const soundModalTitle = document.getElementById("sound-modal-title");
+  const nameInput = document.getElementById("sound-name");
+  const nameCharCount = document.getElementById("name-char-count");
+  const catSelect = document.getElementById("sound-cat");
+  const newCatInput = document.getElementById("new-cat-input");
+  const newCatAddBtn = document.getElementById("new-cat-add-btn");
+  const fileInput = document.getElementById("sound-file");
+  const fileDropLabel = document.getElementById("file-drop-label");
+  const audioPreview = document.getElementById("audio-preview");
+  const saveSoundBtn = document.getElementById("save-sound-btn");
+  const deleteRow = document.getElementById("delete-row");
+  const deleteSoundBtn = document.getElementById("delete-sound-btn");
+
+  const tagInput = document.getElementById("tag-input");
+  const tagAddBtn = document.getElementById("tag-add-btn");
+  const tagsCurrentEl = document.getElementById("tags-current");
+  const tagSuggestionsEl = document.getElementById("tag-suggestions");
+
+  const appearanceTextBtn = document.getElementById("appearance-text-btn");
+  const appearanceImageBtn = document.getElementById("appearance-image-btn");
+  const imageAppearanceBlock = document.getElementById("image-appearance-block");
+  const btnImgFile = document.getElementById("btn-img-file");
+  const btnImgDropLabel = document.getElementById("btn-img-drop-label");
+  const cropBlock = document.getElementById("crop-block");
+  const cropWrap = document.getElementById("crop-wrap");
+  const cropImg = document.getElementById("crop-img");
+  const cropZoom = document.getElementById("crop-zoom");
+  const imgPreviewRow = document.getElementById("img-preview-row");
+  const imgPreviewThumb = document.getElementById("img-preview-thumb");
+  const imgChangeBtn = document.getElementById("img-change-btn");
+  const imgRemoveBtn = document.getElementById("img-remove-btn");
+
+  const catsModalOverlay = document.getElementById("cats-modal-overlay");
+  const catsListEl = document.getElementById("cats-list");
+  const catsModalNewInput = document.getElementById("cats-modal-new-input");
+
+  const manageSoundsOverlay = document.getElementById("manage-sounds-overlay");
+  const manageSoundsList = document.getElementById("manage-sounds-list");
+  const manageSoundsSearch = document.getElementById("manage-sounds-search");
+
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toastEl.classList.remove("show"), 1800);
+  }
+
+  /* =========================================================
+     RENDER: CATEGORÍAS (chips en la barra superior)
+     ========================================================= */
+  function renderCategoryChips() {
+    // Eliminar chips existentes salvo "Todos" y los botones de gestionar
+    Array.from(topbarRow2.querySelectorAll(".chip[data-cat]")).forEach((el) => {
+      if (el.dataset.cat !== "__all__") el.remove();
+    });
+
+    // Las categorías se insertan justo antes del <select> de orden, es decir,
+    // después de ⚙, ✎ y "Todos" (que quedan siempre fijos a la izquierda).
+    const sortSelectEl = document.getElementById("sort-select");
+    categories.forEach((cat) => {
+      const chip = document.createElement("button");
+      chip.className = "chip" + (activeCatId === cat.id ? " active" : "");
+      chip.textContent = cat.name;
+      chip.dataset.cat = cat.id;
+      chip.addEventListener("click", () => {
+        activeCatId = cat.id;
+        renderCategoryChips();
+        renderBoard();
+      });
+      topbarRow2.insertBefore(chip, sortSelectEl);
+    });
+
+    // Refrescar estado activo del chip "Todos"
+    const allChip = topbarRow2.querySelector('[data-cat="__all__"]');
+    allChip.classList.toggle("active", activeCatId === "__all__");
+  }
+
+  // El chip "Todos" es estático (vive en el HTML, no se recrea en cada
+  // render), así que su listener se registra una sola vez aquí. Antes no
+  // tenía ningún listener y por eso quedaba "muerto" tras crear categorías.
+  document.querySelector('.chip[data-cat="__all__"]').addEventListener("click", () => {
+    activeCatId = "__all__";
+    renderCategoryChips();
+    renderBoard();
+  });
+
+  /* =========================================================
+     RENDER: TAGS (chips de hashtags en la barra superior)
+     Estos chips permiten filtrar por tag "a través" de todas las
+     categorías, independientemente de la categoría activa.
+     ========================================================= */
+  function getAllTags() {
+    const set = new Set();
+    sounds.forEach((s) => {
+      (s.tags || []).forEach((t) => set.add(t));
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
+  }
+
+  function renderTagChips() {
+    const tags = getAllTags();
+    topbarRow3.innerHTML = "";
+    if (tags.length === 0) {
+      activeTag = null;
+      return;
+    }
+    tags.forEach((tag) => {
+      const chip = document.createElement("button");
+      chip.className = "chip chip-tag" + (activeTag === tag ? " active" : "");
+      chip.textContent = "#" + tag;
+      chip.addEventListener("click", () => {
+        activeTag = activeTag === tag ? null : tag; // toca de nuevo para quitar el filtro
+        renderTagChips();
+        renderBoard();
+      });
+      topbarRow3.appendChild(chip);
+    });
+  }
+
+  /* =========================================================
+     RENDER: TABLERO DE BOTONES
+     ========================================================= */
+  function getFilteredSortedSounds() {
+    let list = sounds.slice();
+
+    if (activeCatId !== "__all__") {
+      list = list.filter((s) => s.catId === activeCatId);
+    }
+    // El filtro de tag actúa "a través" de todas las categorías: si hay un
+    // tag activo, se aplica además del filtro de categoría (no en su lugar),
+    // así el usuario puede combinar "categoría X + tag payaso" si quiere.
+    if (activeTag) {
+      list = list.filter((s) => (s.tags || []).includes(activeTag));
+    }
+    if (searchTerm.trim()) {
+      const q = searchTerm.trim().toLowerCase();
+      list = list.filter((s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.tags || []).some((t) => t.toLowerCase().includes(q))
+      );
+    }
+
+    switch (sortMode) {
+      case "recent":
+        list.sort((a, b) => b.createdAt - a.createdAt);
+        break;
+      case "old":
+        list.sort((a, b) => a.createdAt - b.createdAt);
+        break;
+      case "az":
+        list.sort((a, b) => a.name.localeCompare(b.name, "es"));
+        break;
+      case "za":
+        list.sort((a, b) => b.name.localeCompare(a.name, "es"));
+        break;
+    }
+    return list;
+  }
+
+  function categoryName(catId) {
+    const c = categories.find((c) => c.id === catId);
+    return c ? c.name : "";
+  }
+
+  function renderBoard() {
+    forgetStaleAudioButton();
+    const list = getFilteredSortedSounds();
+    boardEl.classList.toggle("edit-mode", editMode);
+    editModeBar.classList.toggle("show", editMode);
+    boardEl.innerHTML = "";
+
+    if (list.length === 0) {
+      const msg = document.createElement("div");
+      msg.className = "empty-msg";
+      msg.textContent = sounds.length === 0
+        ? "Aún no hay botones. Toca “+” para crear el primero."
+        : "No hay sonidos que coincidan con este filtro.";
+      boardEl.appendChild(msg);
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    list.forEach((s) => {
+      const btn = document.createElement("button");
+      btn.className = "sound-btn";
+      btn.dataset.id = s.id;
+
+      const dot = document.createElement("div");
+      dot.className = "dot";
+      btn.appendChild(dot);
+
+      const delX = document.createElement("div");
+      delX.className = "del-x";
+      delX.textContent = "✕";
+      delX.addEventListener("click", (e) => {
+        e.stopPropagation();
+        confirmQuickDelete(s.id);
+      });
+      btn.appendChild(delX);
+
+      // Apariencia: imagen o texto son excluyentes. La imagen ya llega
+      // pre-recortada a cuadrado desde el modal, y object-fit:cover +
+      // overflow:hidden en .sound-btn aseguran que nunca sobresalga.
+      if (s.appearance === "image" && s.imageBlob) {
+        btn.classList.add("has-img");
+        const img = document.createElement("img");
+        img.className = "btn-img";
+        img.src = getImageUrl(s);
+        img.alt = s.name;
+        btn.appendChild(img);
+      }
+
+      const label = document.createElement("div");
+      label.className = "label";
+      label.textContent = s.name;
+      btn.appendChild(label);
+
+      if (s.catId) {
+        const tag = document.createElement("div");
+        tag.className = "cat-tag";
+        tag.textContent = categoryName(s.catId);
+        btn.appendChild(tag);
+      }
+
+      btn.addEventListener("click", () => {
+        if (editMode) {
+          openSoundModalForEdit(s.id);
+        } else {
+          playSound(s.id, btn);
+        }
+      });
+
+      // Mantener presionado activa el modo edición. Usamos eventos de
+      // puntero unificados (no solo touch*) para que esto funcione igual
+      // con dedo en móvil que con mouse en escritorio; antes solo
+      // reaccionaba a touch y en desktop no había forma de activarlo así.
+      let pressTimer = null;
+      let pressMoved = false;
+      btn.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return; // solo clic izquierdo
+        pressMoved = false;
+        pressTimer = setTimeout(() => {
+          if (pressMoved) return;
+          editMode = true;
+          renderBoard();
+        }, 550);
+      });
+      btn.addEventListener("pointerup", () => clearTimeout(pressTimer));
+      btn.addEventListener("pointerleave", () => clearTimeout(pressTimer));
+      btn.addEventListener("pointercancel", () => clearTimeout(pressTimer));
+      btn.addEventListener("pointermove", () => { pressMoved = true; clearTimeout(pressTimer); });
+
+      frag.appendChild(btn);
+    });
+    boardEl.appendChild(frag);
+  }
+
+  function confirmQuickDelete(soundId) {
+    const s = sounds.find((x) => x.id === soundId);
+    if (!s) return;
+    if (confirm(`¿Borrar "${s.name}"?`)) {
+      deleteSound(soundId);
+    }
+  }
+
+  /* =========================================================
+     REPRODUCCIÓN DE AUDIO
+     ========================================================= */
+  function getObjectUrl(sound) {
+    if (objectUrlCache.has(sound.id)) return objectUrlCache.get(sound.id);
+    const url = URL.createObjectURL(sound.audioBlob);
+    objectUrlCache.set(sound.id, url);
+    return url;
+  }
+
+  function getImageUrl(sound) {
+    if (!sound.imageBlob) return "";
+    if (imageUrlCache.has(sound.id)) return imageUrlCache.get(sound.id);
+    const url = URL.createObjectURL(sound.imageBlob);
+    imageUrlCache.set(sound.id, url);
+    return url;
+  }
+
+  function invalidateImageUrl(soundId) {
+    if (imageUrlCache.has(soundId)) {
+      URL.revokeObjectURL(imageUrlCache.get(soundId));
+      imageUrlCache.delete(soundId);
+    }
+  }
+
+  // Si btnEl contiene un botón .msa-play (fila del apartado "Editar sonidos"),
+  // alternamos su ícono ▶/⏸ para que quede claro qué está sonando y cómo pararlo.
+  function setRowPlayIcon(el, playing) {
+    const playBtn = el.querySelector && el.querySelector(".msa-play");
+    if (playBtn) playBtn.textContent = playing ? "⏸" : "▶";
+  }
+
+  // Antes, si se reconstruía la lista (buscar, editar, cambiar de categoría)
+  // mientras algo sonaba, currentPlayingBtn quedaba apuntando a un elemento
+  // ya destruido: el audio seguía sonando bien, pero cualquier intento de
+  // volver a tocarlo para pararlo (toggle) fallaba porque comparaba contra
+  // un nodo fantasma. Esto limpia esa referencia sin cortar el audio.
+  function forgetStaleAudioButton() {
+    if (currentPlayingBtn && !document.body.contains(currentPlayingBtn)) {
+      currentPlayingBtn = null;
+    }
+  }
+
+  function playSound(soundId, btnEl) {
+    const s = sounds.find((x) => x.id === soundId);
+    if (!s || !s.audioBlob) {
+      showToast("Este botón no tiene audio");
+      return;
+    }
+
+    // Si tocan el mismo botón que está sonando, lo detiene (toggle)
+    if (currentPlayingBtn === btnEl && currentAudio && !currentAudio.paused) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      btnEl.classList.remove("playing");
+      setRowPlayIcon(btnEl, false);
+      currentAudio = null;
+      currentPlayingBtn = null;
+      return;
+    }
+
+    // Detener sonido anterior si había uno
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      if (currentPlayingBtn) {
+        currentPlayingBtn.classList.remove("playing");
+        setRowPlayIcon(currentPlayingBtn, false);
+      }
+    }
+
+    const url = getObjectUrl(s);
+    const audio = new Audio(url);
+    currentAudio = audio;
+    currentPlayingBtn = btnEl;
+    btnEl.classList.add("playing");
+    setRowPlayIcon(btnEl, true);
+
+    audio.addEventListener("ended", () => {
+      btnEl.classList.remove("playing");
+      setRowPlayIcon(btnEl, false);
+      if (currentAudio === audio) {
+        currentAudio = null;
+        currentPlayingBtn = null;
+      }
+    });
+    audio.play().catch(() => {
+      btnEl.classList.remove("playing");
+      setRowPlayIcon(btnEl, false);
+      showToast("No se pudo reproducir el audio");
+    });
+  }
+
+  /* =========================================================
+     MODAL: CREAR / EDITAR SONIDO
+     ========================================================= */
+  function populateCatSelect() {
+    catSelect.innerHTML = "";
+    const optNone = document.createElement("option");
+    optNone.value = "";
+    optNone.textContent = "Sin categoría";
+    catSelect.appendChild(optNone);
+
+    categories.forEach((cat) => {
+      const opt = document.createElement("option");
+      opt.value = cat.id;
+      opt.textContent = cat.name;
+      catSelect.appendChild(opt);
+    });
+  }
+
+  function resetSoundModalFields() {
+    nameInput.value = "";
+    nameCharCount.textContent = "0";
+    populateCatSelect();
+    catSelect.value = "";
+    newCatInput.value = "";
+    pickedFile = null;
+    fileInput.value = "";
+    fileDropLabel.textContent = "Toca para elegir un audio";
+    fileDropLabel.classList.remove("has-file");
+    setAudioPreview(null);
+
+    draftTags = [];
+    tagInput.value = "";
+    renderDraftTags();
+    renderTagSuggestions();
+
+    setAppearanceMode("text");
+    pickedImageBlob = null;
+    resetCropUI();
+    imgPreviewRow.style.display = "none";
+    btnImgFile.value = "";
+    btnImgDropLabel.style.display = "";
+    btnImgDropLabel.textContent = "Toca para elegir una imagen";
+    btnImgDropLabel.classList.remove("has-file");
+
+    updateSaveButtonState();
+  }
+
+  function openSoundModalForCreate() {
+    editingSoundId = null;
+    soundModalTitle.textContent = "Nuevo sonido";
+    deleteRow.style.display = "none";
+    resetSoundModalFields();
+    soundModalOverlay.classList.add("open");
+    nameInput.focus();
+  }
+
+  function openSoundModalForEdit(soundId) {
+    const s = sounds.find((x) => x.id === soundId);
+    if (!s) return;
+    // Si se abrió desde el apartado "Editar sonidos", lo cerramos primero:
+    // dos overlays fixed superpuestos hacían que el de abajo interceptara
+    // los toques del modal de arriba. Recordamos para volver a abrirlo después.
+    returnToManageSounds = manageSoundsOverlay.classList.contains("open");
+    manageSoundsOverlay.classList.remove("open");
+    editingSoundId = soundId;
+    soundModalTitle.textContent = "Editar sonido";
+    deleteRow.style.display = "flex";
+    populateCatSelect();
+
+    nameInput.value = s.name;
+    nameCharCount.textContent = String(s.name.length);
+    catSelect.value = s.catId || "";
+    newCatInput.value = "";
+    pickedFile = null; // si el usuario no toca el archivo, se conserva el original
+    fileInput.value = "";
+    if (s.audioBlob) {
+      fileDropLabel.textContent = "🎵 Audio ya cargado (toca para cambiarlo)";
+      fileDropLabel.classList.add("has-file");
+      setAudioPreview(s.audioBlob);
+    } else {
+      fileDropLabel.textContent = "Toca para elegir un audio";
+      fileDropLabel.classList.remove("has-file");
+      setAudioPreview(null);
+    }
+
+    // Tags: partimos de una copia, así si el usuario cancela no se pierde nada
+    draftTags = (s.tags || []).slice();
+    tagInput.value = "";
+    renderDraftTags();
+    renderTagSuggestions();
+
+    // Apariencia e imagen: se conserva la imagen guardada si el usuario no la toca
+    pickedImageBlob = null;
+    resetCropUI();
+    btnImgFile.value = "";
+    setAppearanceMode(s.appearance === "image" ? "image" : "text");
+    if (s.appearance === "image" && s.imageBlob) {
+      btnImgDropLabel.style.display = "none";
+      imgPreviewRow.style.display = "flex";
+      imgPreviewThumb.src = getImageUrl(s);
+    } else {
+      btnImgDropLabel.style.display = "";
+      btnImgDropLabel.textContent = "Toca para elegir una imagen";
+      btnImgDropLabel.classList.remove("has-file");
+      imgPreviewRow.style.display = "none";
+    }
+
+    updateSaveButtonState();
+    soundModalOverlay.classList.add("open");
+  }
+
+  function closeSoundModal() {
+    soundModalOverlay.classList.remove("open");
+    editingSoundId = null;
+    pickedFile = null;
+    resetCropUI();
+    audioPreview.pause();
+    setAudioPreview(null);
+    if (returnToManageSounds) {
+      returnToManageSounds = false;
+      renderManageSoundsList();
+      manageSoundsOverlay.classList.add("open");
+    }
+  }
+
+  /* =========================================================
+     TAGS (hashtags) DENTRO DEL MODAL DE SONIDO
+     Se normalizan a minúsculas y sin "#" ni espacios, para que
+     "Payaso", "#payaso" y "payaso " sean siempre el mismo tag.
+     ========================================================= */
+  function normalizeTag(raw) {
+    return raw
+      .trim()
+      .toLowerCase()
+      .replace(/^#+/, "")
+      .replace(/\s+/g, "-");
+  }
+
+  function addDraftTag(raw) {
+    const tag = normalizeTag(raw);
+    if (!tag) return;
+    if (draftTags.includes(tag)) return;
+    draftTags.push(tag);
+    renderDraftTags();
+    renderTagSuggestions();
+  }
+
+  function removeDraftTag(tag) {
+    draftTags = draftTags.filter((t) => t !== tag);
+    renderDraftTags();
+    renderTagSuggestions();
+  }
+
+  function renderDraftTags() {
+    tagsCurrentEl.innerHTML = "";
+    if (draftTags.length === 0) {
+      const hint = document.createElement("div");
+      hint.className = "tags-empty-hint";
+      hint.textContent = "Sin tags todavía";
+      tagsCurrentEl.appendChild(hint);
+      return;
+    }
+    draftTags.forEach((tag) => {
+      const pill = document.createElement("span");
+      pill.className = "tag-pill";
+      const label = document.createElement("span");
+      label.textContent = tag;
+      pill.appendChild(label);
+      const x = document.createElement("span");
+      x.className = "tag-x";
+      x.textContent = "✕";
+      x.addEventListener("click", () => removeDraftTag(tag));
+      pill.appendChild(x);
+      tagsCurrentEl.appendChild(pill);
+    });
+  }
+
+  // Sugerencias: tags ya usados en otros sonidos, para reutilizar en vez de
+  // escribir de cero (evita duplicados como "payaso" / "payasos" / "clown").
+  function renderTagSuggestions() {
+    const existing = getAllTags().filter((t) => !draftTags.includes(t));
+    tagSuggestionsEl.innerHTML = "";
+    existing.forEach((tag) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "tag-suggestion";
+      chip.textContent = tag;
+      chip.addEventListener("click", () => addDraftTag(tag));
+      tagSuggestionsEl.appendChild(chip);
+    });
+  }
+
+  tagAddBtn.addEventListener("click", () => {
+    addDraftTag(tagInput.value);
+    tagInput.value = "";
+    tagInput.focus();
+  });
+  tagInput.addEventListener("keydown", (e) => {
+    // Enter o coma añaden el tag, igual que en la mayoría de apps con hashtags
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addDraftTag(tagInput.value);
+      tagInput.value = "";
+    }
+  });
+
+  /* =========================================================
+     APARIENCIA DEL BOTÓN: TEXTO vs IMAGEN (excluyentes)
+     ========================================================= */
+  function setAppearanceMode(mode) {
+    appearanceMode = mode;
+    appearanceTextBtn.classList.toggle("active", mode === "text");
+    appearanceImageBtn.classList.toggle("active", mode === "image");
+    imageAppearanceBlock.style.display = mode === "image" ? "block" : "none";
+    updateSaveButtonState();
+  }
+
+  appearanceTextBtn.addEventListener("click", () => setAppearanceMode("text"));
+  appearanceImageBtn.addEventListener("click", () => setAppearanceMode("image"));
+
+  /* =========================================================
+     RECORTE DE IMAGEN
+     La imagen se recorta a un cuadrado ANTES de guardarse: así el
+     dato que vive en IndexedDB ya es la imagen final, y el botón
+     en el tablero nunca necesita "adivinar" cómo encajarla ni corre
+     riesgo de que algo se salga de sus límites.
+     ========================================================= */
+  function resetCropUI() {
+    cropBlock.style.display = "none";
+    cropState = null;
+    cropSourceImg = null;
+    cropZoom.value = 100;
+    cropImg.style.width = "";
+    cropImg.style.height = "";
+    cropImg.style.transform = "";
+    cropImg.src = "";
+  }
+
+  const CROP_BOX = 260; // debe coincidir con max-width de .crop-wrap
+
+  function startCrop(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        cropSourceImg = img;
+        const wrapSize = Math.min(cropWrap.clientWidth || CROP_BOX, CROP_BOX);
+
+        // Escala mínima: la imagen debe cubrir el cuadrado completo por el
+        // lado más corto, para que nunca queden huecos vacíos en el recorte.
+        const minScale = Math.max(wrapSize / img.naturalWidth, wrapSize / img.naturalHeight);
+        cropState = {
+          natW: img.naturalWidth,
+          natH: img.naturalHeight,
+          wrapSize,
+          minScale,
+          scale: minScale,
+          offX: 0,
+          offY: 0,
+        };
+        cropZoom.value = 100;
+        cropImg.src = reader.result;
+        applyCropTransform();
+        cropBlock.style.display = "block";
+        commitCropToPreview();
+      };
+      img.onerror = () => showToast("No se pudo leer la imagen");
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function applyCropTransform() {
+    if (!cropState) return;
+    const w = cropState.natW * cropState.scale;
+    const h = cropState.natH * cropState.scale;
+    cropImg.style.width = w + "px";
+    cropImg.style.height = h + "px";
+    // Centramos por defecto y aplicamos el offset de arrastre, siempre
+    // dentro de límites para que jamás se vea un hueco vacío en el recorte.
+    const maxOffX = Math.max(0, (w - cropState.wrapSize) / 2);
+    const maxOffY = Math.max(0, (h - cropState.wrapSize) / 2);
+    cropState.offX = Math.min(maxOffX, Math.max(-maxOffX, cropState.offX));
+    cropState.offY = Math.min(maxOffY, Math.max(-maxOffY, cropState.offY));
+    const left = (cropState.wrapSize - w) / 2 + cropState.offX;
+    const top = (cropState.wrapSize - h) / 2 + cropState.offY;
+    cropImg.style.transform = `translate(${left}px, ${top}px)`;
+  }
+
+  // Arrastre para reencuadrar (puntero unificado: sirve para touch y mouse)
+  let dragState = null;
+  cropWrap.addEventListener("pointerdown", (e) => {
+    if (!cropState) return;
+    dragState = { x: e.clientX, y: e.clientY, offX: cropState.offX, offY: cropState.offY };
+    cropWrap.setPointerCapture(e.pointerId);
+  });
+  cropWrap.addEventListener("pointermove", (e) => {
+    if (!dragState || !cropState) return;
+    cropState.offX = dragState.offX + (e.clientX - dragState.x);
+    cropState.offY = dragState.offY + (e.clientY - dragState.y);
+    applyCropTransform();
+  });
+  cropWrap.addEventListener("pointerup", () => { dragState = null; commitCropToPreview(); });
+  cropWrap.addEventListener("pointercancel", () => { dragState = null; });
+
+  cropZoom.addEventListener("input", () => {
+    if (!cropState) return;
+    // El slider va de 100 a 300 (%) sobre la escala mínima, así el 100%
+    // siempre corresponde a "la imagen ya llena el cuadrado, sin huecos"
+    cropState.scale = cropState.minScale * (Number(cropZoom.value) / 100);
+    applyCropTransform();
+  });
+  cropZoom.addEventListener("change", commitCropToPreview);
+
+  // Convierte el recorte visible en un Blob cuadrado definitivo (PNG)
+  function commitCrop() {
+    return new Promise((resolve) => {
+      if (!cropState || !cropSourceImg) { resolve(null); return; }
+      const OUT = 320; // tamaño de salida fijo: suficiente nitidez, ligero en gama baja
+      const canvas = document.createElement("canvas");
+      canvas.width = OUT;
+      canvas.height = OUT;
+      const ctx = canvas.getContext("2d");
+
+      // Mapeamos del espacio de pantalla (wrapSize) al espacio natural de la imagen
+      const w = cropState.natW * cropState.scale;
+      const h = cropState.natH * cropState.scale;
+      const left = (cropState.wrapSize - w) / 2 + cropState.offX;
+      const top = (cropState.wrapSize - h) / 2 + cropState.offY;
+
+      // Región visible dentro del cuadrado de recorte, en coords de pantalla
+      const visLeft = -left;
+      const visTop = -top;
+
+      // Pasamos esa región a coordenadas de la imagen original (sin escalar)
+      const sx = visLeft / cropState.scale;
+      const sy = visTop / cropState.scale;
+      const sSize = cropState.wrapSize / cropState.scale;
+
+      ctx.drawImage(cropSourceImg, sx, sy, sSize, sSize, 0, 0, OUT, OUT);
+      canvas.toBlob((blob) => resolve(blob), "image/png", 0.92);
+    });
+  }
+
+  btnImgFile.addEventListener("change", () => {
+    const f = btnImgFile.files && btnImgFile.files[0];
+    if (f) {
+      btnImgDropLabel.style.display = "none";
+      startCrop(f);
+    }
+  });
+
+  // Toma el recorte visible en pantalla y lo convierte en el Blob definitivo
+  // que se guardará; también refresca la miniatura de vista previa.
+  async function commitCropToPreview() {
+    if (!cropState || !cropSourceImg) return;
+    const blob = await commitCrop();
+    if (!blob) return;
+    pickedImageBlob = blob;
+    if (imgPreviewThumb.dataset.blobUrl) {
+      URL.revokeObjectURL(imgPreviewThumb.dataset.blobUrl);
+    }
+    const url = URL.createObjectURL(blob);
+    imgPreviewThumb.src = url;
+    imgPreviewThumb.dataset.blobUrl = url;
+    imgPreviewRow.style.display = "flex";
+    updateSaveButtonState();
+  }
+
+  imgChangeBtn.addEventListener("click", () => btnImgFile.click());
+  imgRemoveBtn.addEventListener("click", () => {
+    pickedImageBlob = null;
+    resetCropUI();
+    btnImgFile.value = "";
+    btnImgDropLabel.style.display = "";
+    btnImgDropLabel.textContent = "Toca para elegir una imagen";
+    btnImgDropLabel.classList.remove("has-file");
+    imgPreviewRow.style.display = "none";
+    updateSaveButtonState();
+  });
+
+  function updateSaveButtonState() {
+    const hasName = nameInput.value.trim().length > 0;
+    const hasAudio = pickedFile !== null || (editingSoundId !== null && sounds.find(s => s.id === editingSoundId)?.audioBlob);
+    // Si eligió "Imagen" como apariencia, exigimos que haya una imagen lista
+    // (recién recortada o, en edición, la que ya tenía guardada).
+    const existingSound = editingSoundId !== null ? sounds.find(s => s.id === editingSoundId) : null;
+    const hasImageIfNeeded = appearanceMode !== "image" ||
+      pickedImageBlob !== null ||
+      (existingSound && existingSound.appearance === "image" && existingSound.imageBlob);
+    saveSoundBtn.disabled = !(hasName && hasAudio && hasImageIfNeeded);
+  }
+
+  nameInput.addEventListener("input", () => {
+    nameCharCount.textContent = String(nameInput.value.length);
+    updateSaveButtonState();
+  });
+
+  // Convierte "risa_malvada-02.mp3" en "Risa malvada 02": quita la extensión,
+  // cambia guiones/underscores por espacios y pone la primera letra en mayúscula.
+  // Es solo un punto de partida razonable; el usuario puede reescribirlo entero.
+  function suggestNameFromFilename(filename) {
+    const base = filename.replace(/\.[^./\\]+$/, "");
+    const cleaned = base.replace(/[_-]+/g, " ").trim();
+    if (!cleaned) return "";
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+
+  let audioPreviewUrl = null;
+  function setAudioPreview(blob) {
+    if (audioPreviewUrl) { URL.revokeObjectURL(audioPreviewUrl); audioPreviewUrl = null; }
+    if (!blob) {
+      audioPreview.style.display = "none";
+      audioPreview.removeAttribute("src");
+      return;
+    }
+    audioPreviewUrl = URL.createObjectURL(blob);
+    audioPreview.src = audioPreviewUrl;
+    audioPreview.style.display = "block";
+  }
+
+  fileInput.addEventListener("change", () => {
+    const f = fileInput.files && fileInput.files[0];
+    if (f) {
+      pickedFile = f;
+      fileDropLabel.textContent = "🎵 " + f.name;
+      fileDropLabel.classList.add("has-file");
+      setAudioPreview(f);
+      // Solo autocompletamos si el nombre sigue vacío: nunca pisamos algo
+      // que el usuario ya haya escrito a propósito.
+      if (!nameInput.value.trim()) {
+        nameInput.value = suggestNameFromFilename(f.name);
+        nameCharCount.textContent = String(nameInput.value.length);
+      }
+    }
+    updateSaveButtonState();
+  });
+
+  newCatAddBtn.addEventListener("click", async () => {
+    const name = newCatInput.value.trim();
+    if (!name) return;
+    const cat = { id: uid(), name };
+    categories.push(cat);
+    await idbPut(STORE_CATS, cat);
+    populateCatSelect();
+    catSelect.value = cat.id;
+    newCatInput.value = "";
+    renderCategoryChips();
+    showToast("Categoría añadida");
+  });
+
+  document.getElementById("open-add-modal").addEventListener("click", openSoundModalForCreate);
+  document.getElementById("cancel-sound-modal").addEventListener("click", closeSoundModal);
+  soundModalOverlay.addEventListener("click", (e) => {
+    if (e.target === soundModalOverlay) closeSoundModal();
+  });
+
+  saveSoundBtn.addEventListener("click", async () => {
+    const name = nameInput.value.trim();
+    if (!name) return;
+    const catId = catSelect.value || null;
+    const tagsToSave = draftTags.slice();
+
+    if (editingSoundId) {
+      const s = sounds.find((x) => x.id === editingSoundId);
+      if (!s) return;
+      s.name = name;
+      s.catId = catId;
+      s.tags = tagsToSave;
+      if (pickedFile) {
+        s.audioBlob = pickedFile;
+        // invalidar url cacheada vieja
+        if (objectUrlCache.has(s.id)) {
+          URL.revokeObjectURL(objectUrlCache.get(s.id));
+          objectUrlCache.delete(s.id);
+        }
+      }
+      s.appearance = appearanceMode;
+      if (appearanceMode === "image") {
+        if (pickedImageBlob) {
+          s.imageBlob = pickedImageBlob;
+          invalidateImageUrl(s.id);
+        }
+        // si no se tocó la imagen, se conserva la que ya tenía (s.imageBlob intacto)
+      } else {
+        // Modo texto: se limpia la imagen para no dejar datos huérfanos
+        s.imageBlob = null;
+        invalidateImageUrl(s.id);
+      }
+      await idbPut(STORE_SOUNDS, s);
+      showToast("Sonido actualizado");
+    } else {
+      if (!pickedFile) return;
+      const newSound = {
+        id: uid(),
+        name,
+        catId,
+        audioBlob: pickedFile,
+        createdAt: Date.now(),
+        tags: tagsToSave,
+        appearance: appearanceMode,
+        imageBlob: appearanceMode === "image" ? pickedImageBlob : null,
+      };
+      sounds.push(newSound);
+      await idbPut(STORE_SOUNDS, newSound);
+      showToast("Sonido creado");
+    }
+
+    closeSoundModal();
+    renderTagChips();
+    renderBoard();
+  });
+
+
+  deleteSoundBtn.addEventListener("click", () => {
+    if (!editingSoundId) return;
+    const s = sounds.find((x) => x.id === editingSoundId);
+    if (s && confirm(`¿Borrar "${s.name}"? Esta acción no se puede deshacer.`)) {
+      deleteSound(editingSoundId);
+      closeSoundModal();
+    }
+  });
+
+  async function deleteSound(soundId) {
+    sounds = sounds.filter((s) => s.id !== soundId);
+    await idbDelete(STORE_SOUNDS, soundId);
+    if (objectUrlCache.has(soundId)) {
+      URL.revokeObjectURL(objectUrlCache.get(soundId));
+      objectUrlCache.delete(soundId);
+    }
+    invalidateImageUrl(soundId);
+    renderTagChips();
+    renderBoard();
+    if (manageSoundsOverlay.classList.contains("open")) renderManageSoundsList();
+    showToast("Sonido borrado");
+  }
+
+  /* =========================================================
+     MODAL: GESTIONAR CATEGORÍAS
+     ========================================================= */
+  function renderCatsModalList() {
+    catsListEl.innerHTML = "";
+    if (categories.length === 0) {
+      const p = document.createElement("div");
+      p.style.cssText = "color:var(--text-dim); font-size:13px; padding:10px 0;";
+      p.textContent = "No hay categorías todavía.";
+      catsListEl.appendChild(p);
+      return;
+    }
+    categories.forEach((cat) => {
+      const row = document.createElement("div");
+      row.className = "manage-cat-item";
+
+      // Nombre editable en línea: se guarda al perder foco o al presionar
+      // Enter, sin necesidad de borrar y recrear la categoría para corregirla.
+      const input = document.createElement("input");
+      input.className = "cat-name-input";
+      input.type = "text";
+      input.maxLength = 24;
+      input.value = cat.name;
+      const commitRename = async () => {
+        const newName = input.value.trim();
+        if (!newName) {
+          input.value = cat.name; // no se permite dejarlo vacío
+          return;
+        }
+        if (newName === cat.name) return;
+        cat.name = newName;
+        await idbPut(STORE_CATS, cat);
+        renderCategoryChips();
+        renderBoard();
+        showToast("Categoría renombrada");
+      };
+      input.addEventListener("blur", commitRename);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+      });
+      row.appendChild(input);
+
+      const count = sounds.filter((s) => s.catId === cat.id).length;
+      const countSpan = document.createElement("span");
+      countSpan.className = "cat-count";
+      countSpan.textContent = count === 1 ? "1 sonido" : `${count} sonidos`;
+      row.appendChild(countSpan);
+
+      const delBtn = document.createElement("button");
+      delBtn.textContent = "Borrar";
+      delBtn.addEventListener("click", async () => {
+        const inUse = sounds.filter((s) => s.catId === cat.id).length;
+        const msg = inUse > 0
+          ? `"${cat.name}" tiene ${inUse} sonido(s). Se quedarán sin categoría. ¿Continuar?`
+          : `¿Borrar la categoría "${cat.name}"?`;
+        if (!confirm(msg)) return;
+
+        categories = categories.filter((c) => c.id !== cat.id);
+        await idbDelete(STORE_CATS, cat.id);
+
+        // Los sonidos de esa categoría pasan a "sin categoría"
+        for (const s of sounds) {
+          if (s.catId === cat.id) {
+            s.catId = null;
+            await idbPut(STORE_SOUNDS, s);
+          }
+        }
+        if (activeCatId === cat.id) activeCatId = "__all__";
+
+        renderCatsModalList();
+        renderCategoryChips();
+        renderBoard();
+      });
+      row.appendChild(delBtn);
+      catsListEl.appendChild(row);
+    });
+  }
+
+  document.getElementById("manage-cats-btn").addEventListener("click", () => {
+    renderCatsModalList();
+    catsModalOverlay.classList.add("open");
+  });
+  document.getElementById("close-cats-modal").addEventListener("click", () => {
+    catsModalOverlay.classList.remove("open");
+  });
+  catsModalOverlay.addEventListener("click", (e) => {
+    if (e.target === catsModalOverlay) catsModalOverlay.classList.remove("open");
+  });
+  document.getElementById("cats-modal-new-btn").addEventListener("click", async () => {
+    const name = catsModalNewInput.value.trim();
+    if (!name) return;
+    const cat = { id: uid(), name };
+    categories.push(cat);
+    await idbPut(STORE_CATS, cat);
+    catsModalNewInput.value = "";
+    renderCatsModalList();
+    renderCategoryChips();
+  });
+
+  /* =========================================================
+     APARTADO: EDITAR SONIDOS
+     Vista independiente del tablero: lista TODOS los sonidos ya
+     subidos (sin filtrar por categoría) para poder entrar a
+     modificarlos, reproducirlos o borrarlos de un vistazo.
+     ========================================================= */
+  let manageSoundsSearchTerm = "";
+
+  function renderManageSoundsList() {
+    forgetStaleAudioButton();
+    manageSoundsList.innerHTML = "";
+
+    let list = sounds.slice().sort((a, b) => b.createdAt - a.createdAt);
+    const q = manageSoundsSearchTerm.trim().toLowerCase();
+    if (q) {
+      list = list.filter((s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.tags || []).some((t) => t.toLowerCase().includes(q)) ||
+        categoryName(s.catId).toLowerCase().includes(q)
+      );
+    }
+
+    if (list.length === 0) {
+      const p = document.createElement("div");
+      p.style.cssText = "color:var(--text-dim); font-size:13px; padding:16px 0; text-align:center;";
+      p.textContent = sounds.length === 0
+        ? "Aún no has subido ningún sonido."
+        : "No hay sonidos que coincidan con la búsqueda.";
+      manageSoundsList.appendChild(p);
+      return;
+    }
+
+    list.forEach((s) => {
+      const row = document.createElement("div");
+      row.className = "manage-sound-row";
+
+      const thumb = document.createElement("div");
+      thumb.className = "manage-sound-thumb";
+      if (s.appearance === "image" && s.imageBlob) {
+        const img = document.createElement("img");
+        img.src = getImageUrl(s);
+        img.alt = s.name;
+        thumb.appendChild(img);
+      } else {
+        thumb.textContent = "🔊";
+      }
+      row.appendChild(thumb);
+
+      const info = document.createElement("div");
+      info.className = "manage-sound-info";
+      const nameEl = document.createElement("div");
+      nameEl.className = "manage-sound-name";
+      nameEl.textContent = s.name;
+      info.appendChild(nameEl);
+
+      const meta = document.createElement("div");
+      meta.className = "manage-sound-meta";
+      if (s.catId) {
+        const catSpan = document.createElement("span");
+        catSpan.textContent = categoryName(s.catId);
+        meta.appendChild(catSpan);
+      }
+      (s.tags || []).forEach((t) => {
+        const tagSpan = document.createElement("span");
+        tagSpan.textContent = "#" + t;
+        meta.appendChild(tagSpan);
+      });
+      if (s.catId || (s.tags || []).length) info.appendChild(meta);
+      row.appendChild(info);
+
+      const actions = document.createElement("div");
+      actions.className = "manage-sound-actions";
+
+      const playBtn = document.createElement("button");
+      playBtn.className = "msa-play";
+      playBtn.textContent = "▶";
+      playBtn.title = "Reproducir";
+      playBtn.addEventListener("click", () => playSound(s.id, row));
+      actions.appendChild(playBtn);
+
+      const editBtn = document.createElement("button");
+      editBtn.className = "msa-edit";
+      editBtn.textContent = "✎";
+      editBtn.title = "Editar";
+      editBtn.addEventListener("click", () => openSoundModalForEdit(s.id));
+      actions.appendChild(editBtn);
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "msa-del";
+      delBtn.textContent = "✕";
+      delBtn.title = "Borrar";
+      delBtn.addEventListener("click", () => confirmQuickDelete(s.id));
+      actions.appendChild(delBtn);
+
+      row.appendChild(actions);
+      manageSoundsList.appendChild(row);
+    });
+  }
+
+  document.getElementById("manage-sounds-btn").addEventListener("click", () => {
+    manageSoundsSearchTerm = "";
+    manageSoundsSearch.value = "";
+    renderManageSoundsList();
+    manageSoundsOverlay.classList.add("open");
+  });
+  document.getElementById("close-manage-sounds").addEventListener("click", () => {
+    manageSoundsOverlay.classList.remove("open");
+  });
+  manageSoundsOverlay.addEventListener("click", (e) => {
+    if (e.target === manageSoundsOverlay) manageSoundsOverlay.classList.remove("open");
+  });
+  manageSoundsSearch.addEventListener("input", () => {
+    manageSoundsSearchTerm = manageSoundsSearch.value;
+    renderManageSoundsList();
+  });
+
+
+  /* =========================================================
+     BARRA SUPERIOR: buscador, orden, salir de modo edición
+     ========================================================= */
+  const searchClearBtn = document.getElementById("search-clear-btn");
+  searchInput.addEventListener("input", () => {
+    searchTerm = searchInput.value;
+    searchClearBtn.classList.toggle("show", searchTerm.length > 0);
+    renderBoard();
+  });
+  searchClearBtn.addEventListener("click", () => {
+    searchInput.value = "";
+    searchTerm = "";
+    searchClearBtn.classList.remove("show");
+    renderBoard();
+    searchInput.focus();
+  });
+
+  sortSelect.addEventListener("change", () => {
+    sortMode = sortSelect.value;
+    renderBoard();
+  });
+
+  document.getElementById("app-title").addEventListener("click", () => {
+    // Toque en el título: forma rápida de salir del modo edición si quedó activo
+    if (editMode) {
+      editMode = false;
+      renderBoard();
+    }
+  });
+  document.getElementById("edit-mode-done-btn").addEventListener("click", () => {
+    editMode = false;
+    renderBoard();
+  });
+
+  /* =========================================================
+     BACKUP: EXPORTAR / IMPORTAR
+     Toda la colección vive solo en el IndexedDB de este navegador;
+     si se borra el caché o se cambia de dispositivo, se pierde todo.
+     Este backup empaqueta sonidos y categorías (con sus audios e
+     imágenes convertidos a base64) en un único .json descargable.
+     ========================================================= */
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result); // ya viene como data URL
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function base64ToBlob(dataUrl) {
+    // dataUrl tipo "data:audio/mpeg;base64,AAAA..."
+    const [header, b64] = dataUrl.split(",");
+    const mimeMatch = header.match(/data:(.*?);base64/);
+    const mime = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  }
+
+  async function exportBackup() {
+    try {
+      showToast("Preparando backup…");
+      const soundsOut = [];
+      for (const s of sounds) {
+        soundsOut.push({
+          id: s.id,
+          name: s.name,
+          catId: s.catId || null,
+          createdAt: s.createdAt,
+          tags: s.tags || [],
+          appearance: s.appearance || "text",
+          audioBlob: s.audioBlob ? await blobToBase64(s.audioBlob) : null,
+          audioType: s.audioBlob ? s.audioBlob.type : null,
+          imageBlob: s.imageBlob ? await blobToBase64(s.imageBlob) : null,
+        });
+      }
+      const payload = {
+        formatVersion: 1,
+        exportedAt: new Date().toISOString(),
+        categories: categories,
+        sounds: soundsOut,
+      };
+      const json = JSON.stringify(payload);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `panel-de-sonidos-backup-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      showToast("Backup descargado");
+    } catch (err) {
+      console.error(err);
+      showToast("No se pudo generar el backup");
+    }
+  }
+
+  async function importBackup(file) {
+    let payload;
+    try {
+      const text = await file.text();
+      payload = JSON.parse(text);
+    } catch (err) {
+      showToast("Ese archivo no es un backup válido");
+      return;
+    }
+    if (!payload || !Array.isArray(payload.sounds) || !Array.isArray(payload.categories)) {
+      showToast("El backup no tiene el formato esperado");
+      return;
+    }
+
+    const replaceAll = confirm(
+      "¿Reemplazar TODO lo que tienes ahora por el contenido del backup?\n\n" +
+      "Aceptar = reemplazar todo\nCancelar = añadir el backup a lo que ya tienes"
+    );
+
+    if (replaceAll) {
+      // Borramos lo existente en IndexedDB antes de escribir lo importado
+      for (const s of sounds) await idbDelete(STORE_SOUNDS, s.id);
+      for (const c of categories) await idbDelete(STORE_CATS, c.id);
+      sounds = [];
+      categories = [];
+      objectUrlCache.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlCache.clear();
+      imageUrlCache.forEach((url) => URL.revokeObjectURL(url));
+      imageUrlCache.clear();
+    }
+
+    // Mapa de IDs viejos -> nuevos por si hay colisión al "añadir" en vez
+    // de reemplazar (dos backups distintos podrían compartir el mismo id).
+    const catIdMap = new Map();
+    for (const c of payload.categories) {
+      let newId = c.id;
+      if (!replaceAll && categories.some((existing) => existing.id === c.id)) {
+        newId = uid();
+      }
+      catIdMap.set(c.id, newId);
+      const cat = { id: newId, name: c.name };
+      categories.push(cat);
+      await idbPut(STORE_CATS, cat);
+    }
+
+    let importedCount = 0;
+    for (const s of payload.sounds) {
+      try {
+        const newId = (!replaceAll && sounds.some((existing) => existing.id === s.id)) ? uid() : s.id;
+        const sound = {
+          id: newId,
+          name: s.name || "Sonido importado",
+          catId: s.catId ? (catIdMap.get(s.catId) || null) : null,
+          createdAt: s.createdAt || Date.now(),
+          tags: Array.isArray(s.tags) ? s.tags : [],
+          appearance: s.appearance === "image" ? "image" : "text",
+          audioBlob: s.audioBlob ? base64ToBlob(s.audioBlob) : null,
+          imageBlob: s.imageBlob ? base64ToBlob(s.imageBlob) : null,
+        };
+        sounds.push(sound);
+        await idbPut(STORE_SOUNDS, sound);
+        importedCount++;
+      } catch (err) {
+        console.error("Error importando un sonido:", err);
+      }
+    }
+
+    renderCategoryChips();
+    renderTagChips();
+    renderBoard();
+    if (manageSoundsOverlay.classList.contains("open")) renderManageSoundsList();
+    showToast(`Importados ${importedCount} sonido(s)`);
+  }
+
+  document.getElementById("export-backup-btn").addEventListener("click", exportBackup);
+  document.getElementById("import-backup-file").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) importBackup(f);
+    e.target.value = "";
+  });
+
+  /* =========================================================
+     INICIALIZACIÓN
+     ========================================================= */
+  async function init() {
+    try {
+      db = await openDB();
+    } catch (err) {
+      showToast("Error al abrir almacenamiento local");
+      console.error(err);
+      return;
+    }
+
+    const [storedSounds, storedCats] = await Promise.all([
+      idbGetAll(STORE_SOUNDS),
+      idbGetAll(STORE_CATS),
+    ]);
+    sounds = storedSounds;
+    categories = storedCats;
+
+    renderCategoryChips();
+    renderTagChips();
+    renderBoard();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
